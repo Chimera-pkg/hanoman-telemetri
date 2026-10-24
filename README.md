@@ -6,7 +6,7 @@
 
 This archive is the **full merged source**, suitable for extraction over the previous `hanoman-telemetri` source directory. Two new sidebar pages are included:
 
-- **Laporan Informasi**: fill the original Word report sections, fixed official formatting and signatory name (no copied handwritten signature), export DOCX.
+- **Laporan Informasi**: fill the original Word report sections, fixed official formatting and signatory name, and stamp the bundled scanned signature above the signer name, then export DOCX.
 - **Subject Studio**: shared subject identity/profile/portrait editor, generate the five-slide PPTX from the supplied master, reuse report Analysis and Recommendations.
 
 Read [docs/DOCUMENT_STUDIO.md](docs/DOCUMENT_STUDIO.md) for field mapping, the overwrite procedure, storage caveats and limitations. **Generated office files are drafts until independently reviewed and authorized.**
@@ -22,7 +22,7 @@ A local-first Windows-first AI model hub built with **Rust + Tauri v2 + React/Vi
 | Feature | Implementation |
 | --- | --- |
 | Overview | Provider/key/model totals, request graph, readiness and recent events |
-| Provider registry | Two initial custom base URLs, add/delete other OpenAI-compatible providers |
+| Provider registry | Three initial custom base URLs, add/delete other OpenAI-compatible providers |
 | Secret storage | API key values in native OS credential manager (via Rust `keyring`); only masked suffix in SQLite |
 | Discovery | Authenticated `GET {base_url}/models` for **each key**, limit 500 model routes per key |
 | Model explorer | Provider, masked key label, model ID, status, latency, last probe, search/filter |
@@ -64,7 +64,7 @@ or directly open **`preview.html`** for the *legacy v0.1 AI dashboard mock*. Thi
 ## First-use workflow
 
 1. Launch the **native desktop application** (`npm run desktop:dev`).
-2. Open **Providers & keys**. CarteThyia and 9Router endpoints will be preconfigured **without secrets**.
+2. Open **Providers & keys**. CarteThyia, 9Router and RDHX Bansos endpoints will be preconfigured **without secrets**.
 3. Paste a freshly rotated credential into **Add key**, and give it a recognizable label.
 4. Click **Discover models** to list model IDs from `GET /models`.
 5. Open **Model explorer**, choose a discovered route and click **Validate availability** (this sends a small billable test request).
@@ -77,6 +77,7 @@ Known user-supplied endpoints, configured as starting providers:
 
 - CarteThyia — `https://cartethyia-production-682d.up.railway.app/v1`
 - 9Router — `https://9router-production-fc96.up.railway.app/v1`
+- RDHX Bansos — `https://api.rdhx.tech/v1`
 
 Compatibility **has not been remotely validated** in this project package. The native application tests it after the user adds a credential.
 
@@ -130,5 +131,3 @@ hanoman-telemetri/
 ```
 
 **License:** See `LICENSE`. No credentials or third-party design assets are embedded.
-#   h a n o m a n - t e l e m e t r i  
- 

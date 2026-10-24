@@ -1,0 +1,25 @@
+HANOMAN TELEMETRI v0.2.0 — FULL MERGED SOURCE
+================================================
+
+1) Close Hanoman if running. Back up local edits to source files.
+2) Extract Hanoman-Telemetri-v0.2.0-MERGED.zip in the parent directory
+   that contains your existing folder named "hanoman-telemetri".
+3) Allow Windows Explorer / 7-Zip to REPLACE ALL FILES when prompted.
+4) Open PowerShell inside the "hanoman-telemetri" folder.
+5) Run:
+      npm install
+      npm run desktop:dev
+
+Or use the updated run-windows.ps1 helper (after installing prerequisites).
+
+New menus are in the sidebar:
+ - DOCUMENT STUDIO -> Laporan Informasi
+ - DOCUMENT STUDIO -> Subject Studio
+
+Generated DOCX/PPTX files are saved in Windows Downloads in native mode.
+The existing local application SQLite data will NOT be erased by source overwrite.
+New report exports stamp the bundled scanned signature (public/templates/signature.png) above the signer name. Confirm the signer has authorised that use before distributing any export.
+API keys are NOT included: do not paste secrets into source files.
+
+This is a source archive, not a compiled .exe.
+Full information: README.md and docs/DOCUMENT_STUDIO.md
