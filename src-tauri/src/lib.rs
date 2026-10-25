@@ -96,10 +96,14 @@ fn memory_block(workspace:&str,conversation:&str,digest:&str)->Option<String> {
  Some(format!("Konteks memori tersimpan. Gunakan sebagai latar belakang, jangan mengarang di luar catatan ini.\n\n{}",sections.join("\n\n")))
 }
 
+/// Saves an exported Office file under the user's Downloads folder. The stem follows the
+/// `Subject Jaknik <nama> <ddmmyy>` convention, so spaces are allowed; path separators, wildcards
+/// and control characters are not, and neither is a name Windows would silently trim.
 #[tauri::command]
 fn save_office_export(app:AppHandle,file_name:String,data:Vec<u8>)->Result<String,String>{
  if data.is_empty()||data.len()>35_000_000 {return Err("File export must be between 1B and 35MB.".into());}
- if file_name.len()>180||file_name.is_empty()||!file_name.chars().all(|c|c.is_ascii_alphanumeric()||matches!(c,'_'|'-'|'.'))||!(file_name.ends_with(".docx")||file_name.ends_with(".pptx")){
+ let allowed=file_name.chars().all(|c|c.is_ascii_alphanumeric()||matches!(c,'_'|'-'|'.'|' '));
+ if file_name.len()>180||file_name.is_empty()||!allowed||file_name.starts_with(' ')||file_name.ends_with(' ')||file_name.ends_with('.')||!(file_name.ends_with(".docx")||file_name.ends_with(".pptx")){
   return Err("Invalid export filename.".into());
  }
  let folder=app.path().download_dir().or_else(|_|app.path().app_data_dir()).map_err(db_error)?;

@@ -4,6 +4,18 @@ import type {ReportRecord,SubjectRecord} from './documents';
 const XML_PART_DOC='word/document.xml';
 const XML_PART_RELS='word/_rels/document.xml.rels';
 const SIGNATURE_IMAGE='signature.png';
+const PART_CORE='docProps/core.xml';
+const PART_APP='docProps/app.xml';
+const PPT_THUMBNAIL='docProps/thumbnail.jpeg';
+const PPT_PHOTO='ppt/media/image1.png';
+const PPT_SUPPORT='ppt/media/image2.png';
+const DOC_PHOTO='word/media/image1.png';
+// The masters were authored with a real subject inside them. Every export rewrites the picture
+// parts and the cover thumbnail so a document can never inherit a person from the template.
+const PHOTO_SIZE=[328,391] as const;
+const SUPPORT_SIZE=[1002,913] as const;
+const THUMB_SIZE=[256,144] as const;
+const PLACEHOLDER_FILL='#eeeeec';
 // The signer block in the master reserves one empty paragraph between the role line and the
 // signer name. The scanned signature is centred in that gap so the printed report matches the
 // layout of a hand-signed original.
@@ -122,7 +134,9 @@ function clonePowerPointParagraphs(xml:string,key:string,lines:string[]):string 
  const left=paragraphStarts.length?(paragraphStarts[paragraphStarts.length-1].index ?? -1):-1;
  const right=xml.indexOf('</a:p>',start)+6;
  if(left<0||right<6)throw new Error(`Invalid PowerPoint paragraph for ${marker}`);
- const paragraph=xml.slice(left,right);
+ // The master's list paragraph carries a tail of runs with empty text. Cloning them once per item
+ // multiplies dead weight, so they are dropped before duplication.
+ const paragraph=xml.slice(left,right).replace(/<a:r>((?:(?!<\/a:r>)[\s\S])*?)<\/a:r>/g,run=>/<a:t>\s*<\/a:t>/.test(run)||/<a:t\/>/.test(run)?'':run);
  const output=(lines.length?lines:['']).map(line=>paragraph.replace(marker,escapeXml(line))).join('');
  return xml.slice(0,left)+output+xml.slice(right);
 }
@@ -137,6 +151,78 @@ function imageBytes(dataUrl:string):Uint8Array | null {
  if(!/^data:image\/png;base64,/i.test(dataUrl))throw new Error('The selected picture must be a processed PNG image.');
  const data=atob(dataUrl.split(',')[1]);
  return Uint8Array.from(data,c=>c.charCodeAt(0));
+}
+/**
+ * Subject name reduced to ASCII with the parenthetical role and trailing descriptor dropped. Used
+ * for the export file stem and the package title, so both stay short and print-safe.
+ */
+export function subjectName(s:SubjectRecord):string {
+ return s.fullName.replace(/\([^)]*\)|\[[^\]]*\]/g,' ').split(/\s+[-–—]\s+/)[0]
+  .normalize('NFKD').replace(/[\u0300-\u036f]/g,'').replace(/[^A-Za-z0-9\s]/g,' ')
+  .replace(/\s+/g,' ').trim().slice(0,60).trim()||'Subject';
+}
+/** Export file stem: `Subject Jaknik <nama> <ddmmyy>`. */
+export function documentStem(s:SubjectRecord,r:ReportRecord):string {
+ const day=/^(\d{4})-(\d{2})-(\d{2})$/.exec(r.signedDate||r.activityDate);
+ const stamp=day?`${day[3]}${day[2]}${day[1].slice(2)}`:new Date().toISOString().slice(2,10).replace(/-/g,'');
+ return `Subject Jaknik ${subjectName(s)} ${stamp}`;
+}
+function canvasContext(width:number,height:number):CanvasRenderingContext2D {
+ const canvas=document.createElement('canvas');canvas.width=width;canvas.height=height;
+ const context=canvas.getContext('2d');
+ if(!context)fail('Canvas 2D is unavailable in this webview.');
+ return context;
+}
+function canvasBytes(canvas:HTMLCanvasElement,mime:string,quality?:number):Uint8Array {
+ const dataUrl=canvas.toDataURL(mime,quality),comma=dataUrl.indexOf(',');
+ if(comma<0)fail('Canvas produced no image data.');
+ return Uint8Array.from(atob(dataUrl.slice(comma+1)),c=>c.charCodeAt(0));
+}
+/** Neutral grey picture used when the subject has no photo, so the template's own never shows. */
+function placeholderPng([width,height]:readonly [number,number]):Uint8Array {
+ const context=canvasContext(width,height);
+ context.fillStyle=PLACEHOLDER_FILL;context.fillRect(0,0,width,height);
+ return canvasBytes(context.canvas,'image/png');
+}
+/** Cover thumbnail regenerated per export; the template's thumbnail holds the original subject. */
+async function coverThumbnail(s:SubjectRecord,headline:string):Promise<Uint8Array> {
+ const [width,height]=THUMB_SIZE,photo={x:10,y:41,w:41,h:49};
+ const context=canvasContext(width,height);
+ context.fillStyle='#ffffff';context.fillRect(0,0,width,height);
+ const lines=headline?[`SUBJECT TERINDIKASI :`,`1. ${headline}`]:['SUBJECT TERINDIKASI :'];
+ const image=await new Promise<HTMLImageElement|null>(resolve=>{
+  if(!s.photoDataUrl)return resolve(null);
+  const element=new window.Image();
+  element.onload=()=>resolve(element);
+  element.onerror=()=>resolve(null);
+  element.src=s.photoDataUrl;
+ });
+ if(image){
+  // Cover crop keeps the portrait filling the frame exactly like the slide does.
+  const ratio=Math.max(photo.w/image.naturalWidth,photo.h/image.naturalHeight);
+  const cropW=photo.w/ratio,cropH=photo.h/ratio;
+  context.drawImage(image,(image.naturalWidth-cropW)/2,(image.naturalHeight-cropH)/2,cropW,cropH,photo.x,photo.y,photo.w,photo.h);
+ }else{
+  context.fillStyle=PLACEHOLDER_FILL;context.fillRect(photo.x,photo.y,photo.w,photo.h);
+ }
+ context.fillStyle='#111111';context.textBaseline='top';context.textAlign='left';
+ context.font='bold 10px Arial, Helvetica, sans-serif';
+ context.fillText('ANALISA SIGINT',23,12);
+ context.font='6px Arial, Helvetica, sans-serif';
+ lines.slice(0,2).forEach((line,index)=>context.fillText(line.slice(0,74),23,28+index*9));
+ context.font='bold 6px Arial, Helvetica, sans-serif';
+ context.fillText('RAHASIA',photo.x+photo.w+6,photo.y+photo.h-8);
+ return canvasBytes(context.canvas,'image/jpeg',0.9);
+}
+function coreXml(title:string):string {
+ const stamp=new Date().toISOString().replace(/\.\d+Z$/,'Z');
+ return `<?xml version='1.0' encoding='UTF-8' standalone='yes'?>\n<cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:dcmitype="http://purl.org/dc/dcmitype/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"><dc:title>${escapeXml(title)}</dc:title><dc:creator>Hanoman Telemetri</dc:creator><cp:lastModifiedBy>Hanoman Telemetri</cp:lastModifiedBy><cp:revision>1</cp:revision><dcterms:created xsi:type="dcterms:W3CDTF">${stamp}</dcterms:created><dcterms:modified xsi:type="dcterms:W3CDTF">${stamp}</dcterms:modified></cp:coreProperties>`;
+}
+/** Extended properties are rewritten because the master still advertises its own fonts and time. */
+function appXml(kind:'word'|'pptx'):string {
+ const ext='xmlns="http://schemas.openxmlformats.org/officeDocument/2006/extended-properties" xmlns:vt="http://schemas.openxmlformats.org/officeDocument/2006/docPropsVTypes"';
+ const details=kind==='pptx'?'<PresentationFormat>Widescreen</PresentationFormat><Slides>5</Slides>':'<Template>Normal</Template><DocSecurity>0</DocSecurity>';
+ return `<?xml version='1.0' encoding='UTF-8' standalone='yes'?>\n<Properties ${ext}><Application>Hanoman Telemetri</Application>${details}<ScaleCrop>false</ScaleCrop><Company></Company><LinksUpToDate>false</LinksUpToDate><SharedDoc>false</SharedDoc><HyperlinksChanged>false</HyperlinksChanged><AppVersion>16.0000</AppVersion></Properties>`;
 }
 export function validateDocument(s:SubjectRecord,r?:ReportRecord):string[]{
  const errors:string[]=[];
@@ -166,7 +252,9 @@ export async function makeWord(s:SubjectRecord,r:ReportRecord):Promise<Blob>{
  zip.file(XML_PART_RELS,rels.replace('</Relationships>',`<Relationship Id="${relId}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/${SIGNATURE_IMAGE}"/></Relationships>`));
  zip.file(`word/media/${SIGNATURE_IMAGE}`,signatureBytes);
  zip.file(XML_PART_DOC,xml);
- const photo=imageBytes(s.photoDataUrl);if(photo)zip.file('word/media/image1.png',photo);
+ zip.file(DOC_PHOTO,imageBytes(s.photoDataUrl)??placeholderPng(PHOTO_SIZE));
+ zip.file(PART_CORE,coreXml(`${subjectName(s)} — ${idDate(r.signedDate)}`));
+ zip.file(PART_APP,appXml('word'));
  return zip.generateAsync({type:'blob',mimeType:'application/vnd.openxmlformats-officedocument.wordprocessingml.document',compression:'DEFLATE'});
 }
 export async function makePowerPoint(s:SubjectRecord,r:ReportRecord):Promise<Blob>{
@@ -189,11 +277,15 @@ export async function makePowerPoint(s:SubjectRecord,r:ReportRecord):Promise<Blo
   if(/\{\{[a-z_0-9]+\}\}/.test(xml))fail(`Unfilled placeholder on slide ${i}.`);
   zip.file(path,xml);
  }
- const photo=imageBytes(s.photoDataUrl);if(photo)zip.file('ppt/media/image1.png',photo);
- const support=imageBytes(s.supportDataUrl);if(support)zip.file('ppt/media/image2.png',support);
+ const photo=imageBytes(s.photoDataUrl)??placeholderPng(PHOTO_SIZE);
+ const support=imageBytes(s.supportDataUrl)??placeholderPng(SUPPORT_SIZE);
+ zip.file(PPT_PHOTO,photo);
+ zip.file(PPT_SUPPORT,support);
+ zip.file(PPT_THUMBNAIL,await coverThumbnail(s,values.subject_headline||''));
+ zip.file(PART_CORE,coreXml(`${subjectName(s)} — ${idDate(r.signedDate)}`));
+ zip.file(PART_APP,appXml('pptx'));
  return zip.generateAsync({type:'blob',mimeType:'application/vnd.openxmlformats-officedocument.presentationml.presentation',compression:'DEFLATE'});
 }
 export function downloadBlob(blob:Blob,fileName:string){
  const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=fileName;document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);
 }
-export function safeFileName(s:string){return s.trim().normalize('NFKD').replace(/[^\w\d\- ]/g,'').trim().replace(/\s+/g,'_').slice(0,60)||'Subject';}

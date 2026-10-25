@@ -4,7 +4,7 @@ import {Activity,AlertCircle,BookOpen,Check,CheckCircle2,ChevronRight,ClipboardL
 import {isNative} from './lib/api';
 import {newReport,newSubject,normalizeReport,normalizeSubject,type SubjectRecord,type ReportRecord} from './lib/documents';
 import {documentStore} from './lib/documentStore';
-import {downloadBlob,idDate,makePowerPoint,makeWord,safeFileName,validateDocument} from './lib/documentEngine';
+import {documentStem,downloadBlob,idDate,makePowerPoint,makeWord,validateDocument} from './lib/documentEngine';
 import {clearDraft,hasDraftContent,loadDraft,saveDraft,type StudioTab} from './lib/studioDraft';
 
 type Mode='reports'|'subjects';
@@ -110,9 +110,9 @@ export default function DocumentStudio({mode}:{mode:Mode}){
   try{
    const saveFile=async(blob:Blob,name:string)=>{if(isNative){const bytes=Array.from(new Uint8Array(await blob.arrayBuffer()));return invoke<string>('save_office_export',{fileName:name,data:bytes});}downloadBlob(blob,name);return name;};
    const paths:string[]=[];
-   const basename=`${safeFileName(subject.fullName)}_${report.activityDate||'report'}`;
-   if(kind==='word'||kind==='both'){const doc=await makeWord(subject,report);paths.push(await saveFile(doc,`Laporan_Informasi_${basename}.docx`));}
-   if(kind==='pptx'||kind==='both'){const ppt=await makePowerPoint(subject,report);paths.push(await saveFile(ppt,`Subject_${basename}.pptx`));}
+   const stem=documentStem(subject,report);
+   if(kind==='word'||kind==='both'){const doc=await makeWord(subject,report);paths.push(await saveFile(doc,`${stem}.docx`));}
+   if(kind==='pptx'||kind==='both'){const ppt=await makePowerPoint(subject,report);paths.push(await saveFile(ppt,`${stem}.pptx`));}
    setNotice(`File berhasil dibuat: ${paths.join(' · ')}. Periksa tata letak, isi, dan pengesahan sebelum digunakan.`);
   }catch(e){setNotice('Ekspor gagal: '+String(e));}finally{setBusy(false)}
  };
